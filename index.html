@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Gastos">
+<meta name="theme-color" content="#0f1115">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Gastos</title>
+<style>
+:root{--bg:#0f1115;--card:#1a1d24;--tx:#f2f3f5;--mut:#8b93a1;--ac:#4ade80}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px -apple-system,system-ui,sans-serif;padding:env(safe-area-inset-top) 16px calc(env(safe-area-inset-bottom) + 24px)}
+h1{font-size:15px;color:var(--mut);font-weight:500;margin:18px 0 4px}
+.total{font-size:40px;font-weight:700}
+.card{background:var(--card);border-radius:16px;padding:14px;margin:14px 0}
+.amt{width:100%;font-size:34px;background:none;border:0;color:var(--tx);outline:none;font-weight:600}
+.chips{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+.chip{background:#252a33;border:2px solid transparent;border-radius:12px;padding:14px 4px;text-align:center;font-size:14px;color:var(--tx)}
+.chip.on{border-color:var(--ac)}
+.chip b{display:block;font-size:22px;margin-bottom:2px}
+input.note{width:100%;margin-top:10px;background:#252a33;border:0;border-radius:12px;padding:12px;color:var(--tx);font-size:16px}
+button.add{width:100%;margin-top:12px;background:var(--ac);color:#06210f;border:0;border-radius:12px;padding:15px;font-size:17px;font-weight:700}
+.row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #252a33}
+.row:last-child{border:0}
+.row small{color:var(--mut);display:block}
+.del{background:none;border:0;color:var(--mut);font-size:18px;padding:6px}
+.tabs{display:flex;gap:8px}
+.tabs button{flex:1;background:var(--card);border:0;color:var(--mut);padding:10px;border-radius:10px}
+.tabs button.on{color:var(--tx);background:#252a33}
+.ex{background:none;border:1px solid #333;color:var(--mut);border-radius:10px;padding:10px;width:100%;margin-top:10px}
+.empty{color:var(--mut);text-align:center;padding:16px}
+</style>
+</head>
+<body>
+<h1 id="lbl">Hoy</h1>
+<div class="total" id="tot">S/ 0.00</div>
+<div class="tabs" style="margin-top:10px">
+  <button data-r="day" class="on">Hoy</button><button data-r="month">Mes</button><button data-r="all">Todo</button>
+</div>
+
+<div class="card">
+  <input class="amt" id="amt" type="number" inputmode="decimal" placeholder="S/ 0.00" step="0.01">
+  <div class="chips" id="chips"></div>
+  <input class="note" id="note" placeholder="Nota (opcional)">
+  <button class="add" id="add">Guardar gasto</button>
+</div>
+
+<div class="card" id="list"></div>
+<button class="ex" id="ex">Exportar CSV</button>
+
+<script>
+const CATS=[["Comida","🍔"],["Transporte","🚌"],["Super","🛒"],["Salud","💊"],["Ocio","🎬"],["Otros","📦"]];
+const KEY="gastos_v1";
+const load=()=>{try{return JSON.parse(localStorage.getItem(KEY))||[]}catch(e){return[]}};
+const save=a=>localStorage.setItem(KEY,JSON.stringify(a));
+let range="day",cat=null;
+const $=s=>document.querySelector(s);
+const fmt=n=>"S/ "+n.toFixed(2);
+const pad=n=>String(n).padStart(2,"0");
+const dkey=d=>d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
+
+function chips(){
+  $("#chips").innerHTML=CATS.map(([c,e])=>`<div class="chip ${c===cat?"on":""}" data-c="${c}"><b>${e}</b>${c}</div>`).join("");
+  document.querySelectorAll(".chip").forEach(el=>el.onclick=()=>{cat=el.dataset.c;chips();$("#amt").focus()});
+}
+function render(){
+  const all=load().sort((a,b)=>b.t-a.t);
+  const now=new Date(),td=dkey(now),mo=td.slice(0,7);
+  const f=all.filter(g=>range==="all"||(range==="day"&&g.d===td)||(range==="month"&&g.d.startsWith(mo)));
+  $("#lbl").textContent={day:"Hoy",month:"Este mes",all:"Total"}[range];
+  $("#tot").textContent=fmt(f.reduce((s,g)=>s+g.a,0));
+  $("#list").innerHTML=f.length?f.map(g=>{
+    const e=(CATS.find(c=>c[0]===g.c)||[0,"📦"])[1];
+    return `<div class="row"><div>${e} ${g.c}<small>${g.d}${g.n?" · "+g.n.replace(/</g,"&lt;"):""}</small></div><div>${fmt(g.a)} <button class="del" data-id="${g.t}">✕</button></div></div>`}).join(""):'<div class="empty">Sin gastos aquí</div>';
+  document.querySelectorAll(".del").forEach(b=>b.onclick=()=>{save(load().filter(g=>String(g.t)!==b.dataset.id));render()});
+  document.querySelectorAll(".tabs button").forEach(b=>b.classList.toggle("on",b.dataset.r===range));
+}
+$("#add").onclick=()=>{
+  const a=parseFloat($("#amt").value);
+  if(!(a>0))return $("#amt").focus();
+  const g=load();
+  g.push({t:Date.now(),d:dkey(new Date()),a,c:cat||"Otros",n:$("#note").value.trim()});
+  save(g);$("#amt").value="";$("#note").value="";cat=null;chips();render();
+  if(navigator.vibrate)navigator.vibrate(30);
+};
+document.querySelectorAll(".tabs button").forEach(b=>b.onclick=()=>{range=b.dataset.r;render()});
+$("#ex").onclick=()=>{
+  const rows=[["fecha","categoria","monto","nota"],...load().map(g=>[g.d,g.c,g.a,'"'+g.n.replace(/"/g,'""')+'"'])];
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([rows.map(r=>r.join(",")).join("\n")],{type:"text/csv"}));
+  a.download="gastos.csv";a.click();
+};
+
+/* Atajos por URL: ?cat=Comida&amt=15&note=almuerzo&save=1 */
+const p=new URLSearchParams(location.search);
+if(p.get("cat")&&CATS.some(c=>c[0]===p.get("cat")))cat=p.get("cat");
+if(p.get("amt"))$("#amt").value=p.get("amt");
+if(p.get("note"))$("#note").value=p.get("note");
+chips();render();
+if(p.get("save")==="1"&&parseFloat(p.get("amt"))>0){$("#add").click();history.replaceState(null,"",location.pathname)}
+else if(cat)$("#amt").focus();
+if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js");
+</script>
+</body>
+</html>
